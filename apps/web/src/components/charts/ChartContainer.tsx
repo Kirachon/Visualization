@@ -9,6 +9,7 @@ import type { DataBinding } from '../../types/dashboard';
 import type { ChartConfig } from '../../types/charts';
 import { getChartTheme } from '../../themes/chartThemes';
 import { getPalette } from '../../utils/colorPalettes';
+import { ChartStyleContext } from './ChartStyleContext';
 
 export interface ChartContainerProps {
   bindings?: DataBinding;
@@ -105,13 +106,14 @@ const ChartContainer: React.FC<ChartContainerProps> = ({ bindings, children, max
   }
 
   const chartTheme = getChartTheme(themeName);
-  // Resolve palette (reserved for future use in child charts)
-  getPalette(paletteName);
+  const palette = getPalette(paletteName);
   const aria = config?.ariaLabel || config?.title || t('charts.chart', 'Chart');
 
   return (
     <Box role="figure" aria-label={aria} data-theme={chartTheme.name} data-palette={paletteName}>
-      {children({ data: state.data, loading: false })}
+      <ChartStyleContext.Provider value={{ themeName: chartTheme.name, palette, ariaLabel: aria }}>
+        {children({ data: state.data, loading: false })}
+      </ChartStyleContext.Provider>
     </Box>
   );
 };
