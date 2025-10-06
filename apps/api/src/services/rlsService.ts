@@ -71,7 +71,11 @@ export class RlsService {
     const ttl = parseInt(process.env.RLS_CACHE_TTL_MS || '30000', 10);
     const key = tenantId;
     const cached = rlsCache.get(key);
-    if (cached && cached.expiresAt > nowMs()) return cached.predicates;
+    if (cached && cached.expiresAt > nowMs()) {
+      try { const { rlsCacheHits } = await import('../utils/metrics.js'); rlsCacheHits.labels(tenantId).inc(); } catch {}
+      return cached.predicates;
+    }
+    try { const { rlsCacheMisses } = await import('../utils/metrics.js'); rlsCacheMisses.labels(tenantId).inc(); } catch {}
 
     const res = await query(
       `SELECT predicate_sql FROM rls_policies WHERE tenant_id = $1 AND applies_to = 'data' AND active = true`,
