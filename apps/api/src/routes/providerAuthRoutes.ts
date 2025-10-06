@@ -32,7 +32,12 @@ router.get('/auth/oidc/callback', async (req, res, next) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const session = await sessionService.create({ userId: result.userId, token, expiresAt, ipAddress: req.ip, userAgent: req.headers['user-agent'] });
-    res.json({ token: session.token, userId: result.userId, email: result.email });
+    if ((process.env.SESSIONS_COOKIE_MODE || 'false').toLowerCase() === 'true') {
+      res.cookie('sid', session.token, { httpOnly: true, secure: true, sameSite: 'strict', expires: expiresAt, path: '/' });
+      res.json({ userId: result.userId, email: result.email });
+    } else {
+      res.json({ token: session.token, userId: result.userId, email: result.email });
+    }
   } catch (err) { next(err); }
 });
 
@@ -53,7 +58,12 @@ router.post('/auth/saml/acs', async (req, res, next) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const session = await sessionService.create({ userId: result.userId, token, expiresAt, ipAddress: req.ip, userAgent: req.headers['user-agent'] });
-    res.json({ token: session.token, userId: result.userId, email: result.email });
+    if ((process.env.SESSIONS_COOKIE_MODE || 'false').toLowerCase() === 'true') {
+      res.cookie('sid', session.token, { httpOnly: true, secure: true, sameSite: 'strict', expires: expiresAt, path: '/' });
+      res.json({ userId: result.userId, email: result.email });
+    } else {
+      res.json({ token: session.token, userId: result.userId, email: result.email });
+    }
   } catch (err) { next(err); }
 });
 
@@ -74,7 +84,12 @@ router.post('/auth/ldap/login', async (req, res, next) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const session = await sessionService.create({ userId: result.userId, token, expiresAt, ipAddress: req.ip, userAgent: req.headers['user-agent'] });
-    res.json({ token: session.token, userId: result.userId, email: result.email });
+    if ((process.env.SESSIONS_COOKIE_MODE || 'false').toLowerCase() === 'true') {
+      res.cookie('sid', session.token, { httpOnly: true, secure: true, sameSite: 'strict', expires: expiresAt, path: '/' });
+      res.json({ userId: result.userId, email: result.email });
+    } else {
+      res.json({ token: session.token, userId: result.userId, email: result.email });
+    }
   } catch (err) { next(err); }
 });
 

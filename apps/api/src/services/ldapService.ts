@@ -55,12 +55,15 @@ export class LdapService {
     if (!this.isEnabled()) throw new Error('LDAP not enabled');
 
     return new Promise((resolve, reject) => {
-      const client = ldap.createClient({ url: config.url, tlsOptions: { rejectUnauthorized: false } });
+      const strictTls = (process.env.LDAP_STRICT_TLS || 'false').toLowerCase() === 'true';
+      const client = ldap.createClient({ url: config.url, timeout: 10000, connectTimeout: 5000, tlsOptions: { rejectUnauthorized: strictTls } });
 
       client.bind(config.bindDN, config.bindPassword, (bindErr: any) => {
         if (bindErr) { client.unbind(); return reject(new Error('LDAP bind failed')); }
 
-        const searchFilter = config.searchFilter.replace('{username}', username);
+        // Escape LDAP special characters in username to prevent injection
+        const esc = username.replace(/[\\*()\0/]/g, (c) => `\\${c}`);
+        const searchFilter = config.searchFilter.replace('{username}', esc);
         const opts = { scope: 'sub', filter: searchFilter };
 
         client.search(config.searchBase, opts, (searchErr: any, searchRes: any) => {
@@ -74,7 +77,7 @@ export class LdapService {
             if (!entry) return reject(new Error('User not found in LDAP'));
 
             // Verify user password by attempting bind with user DN
-            const userClient = ldap.createClient({ url: config.url, tlsOptions: { rejectUnauthorized: false } });
+            const userClient = ldap.createClient({ url: config.url, timeout: 10000, connectTimeout: 5000, tlsOptions: { rejectUnauthorized: strictTls } });
             userClient.bind(entry.dn, password, async (userBindErr: any) => {
               userClient.unbind();
               if (userBindErr) return reject(new Error('Invalid credentials'));

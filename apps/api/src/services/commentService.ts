@@ -16,15 +16,19 @@ export interface CreateCommentInput {
   userId: string;
   body: string;
   mentions?: string[];
+  parentId?: string | null;
 }
 
 export class CommentService {
   async create(input: CreateCommentInput): Promise<Comment> {
     const mentions = input.mentions || [];
+    // Sanitize body using sanitize-html with a safe allowlist
+    const sanitizeHtml = (await import('sanitize-html')).default;
+    const safeBody = sanitizeHtml(String(input.body), { allowedTags: ['b','i','em','strong','a','code','pre','p','ul','ol','li','br'], allowedAttributes: { a: ['href','title','target'] } });
     const res = await query(
-      `INSERT INTO comments (dashboard_id, user_id, body, mentions, resolved, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,false,NOW(),NOW()) RETURNING *`,
-      [input.dashboardId, input.userId, input.body, JSON.stringify(mentions)]
+      `INSERT INTO comments (dashboard_id, user_id, body, mentions, parent_id, resolved, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,false,NOW(),NOW()) RETURNING *`,
+      [input.dashboardId, input.userId, safeBody, JSON.stringify(mentions), input.parentId || null]
     );
     return this.hydrate(res.rows[0]);
   }

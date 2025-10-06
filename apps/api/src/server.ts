@@ -25,6 +25,8 @@ import activityRoutes from './routes/activityRoutes.js';
 import workspaceRoutes from './routes/workspaceRoutes.js';
 import metadataRoutes from './routes/metadataRoutes.js';
 import securityRoutes from './routes/securityRoutes.js';
+import { auditService } from './services/auditService.js';
+import { query as dbQuery } from './database/connection.js';
 
 // Load environment variables
 dotenv.config();
@@ -84,6 +86,53 @@ app.use('/api/v1', activityRoutes);
 app.use('/api/v1', workspaceRoutes);
 app.use('/api/v1', metadataRoutes);
 app.use('/api/v1', securityRoutes);
+
+// Scheduled audit verification (feature-flagged)
+(function scheduleAuditVerify(){
+  try {
+    const enabled = (process.env.AUDIT_VERIFY_SCHEDULED || 'false').toLowerCase() === 'true';
+    if (!enabled) return;
+    const intervalMs = parseInt(process.env.AUDIT_VERIFY_INTERVAL_MS || '3600000', 10); // 1h default
+    setInterval(async () => {
+      try {
+        const res = await dbQuery(`SELECT DISTINCT tenant_id FROM audit_logs ORDER BY created_at DESC LIMIT 20`);
+        for (const row of res.rows) {
+          const tenantId = row.tenant_id as string;
+          const result = await auditService.verifyChain(tenantId, 1000);
+          if (!result.valid) {
+            // eslint-disable-next-line no-console
+            console.error('[AUDIT] Tamper detected for tenant', tenantId, result.errors.slice(0,3));
+          }
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('[AUDIT] verify job error', e);
+      }
+    }, intervalMs);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[AUDIT] schedule init error', e);
+  }
+})();
+
+// Metadata search continuous indexing (feature-flagged)
+(function scheduleSearchIndexing(){
+  try {
+    const enabled = (process.env.SEARCH_CONTINUOUS_INDEX || 'false').toLowerCase() === 'true';
+    if (!enabled) return;
+    const intervalMs = parseInt(process.env.SEARCH_INDEX_INTERVAL_MS || '300000', 10); // 5m default
+    const { searchService } = require('./services/searchService.js');
+    setInterval(async () => {
+      try {
+        const res = await dbQuery(`SELECT id, name, tags, attrs FROM metadata_assets WHERE updated_at > NOW() - INTERVAL '10 minutes' LIMIT 200`);
+        for (const row of res.rows) {
+          const text = `${row.name} ${(row.tags||[]).join(' ')} ${JSON.stringify(row.attrs||{})}`;
+          await searchService.indexAsset(row.id, text);
+        }
+      } catch (e) { console.error('[SEARCH] index job error', e); }
+    }, intervalMs);
+  } catch (e) { console.error('[SEARCH] schedule init error', e); }
+})();
 
 app.get('/api/v1', (_req: Request, res: Response) => {
   res.json({

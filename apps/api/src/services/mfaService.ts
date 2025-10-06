@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { query } from '../database/connection.js';
+import { encryptionService } from './encryptionService.js';
 
 function base32Encode(buf: Buffer): string {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -75,15 +76,29 @@ export class MfaService {
     return Buffer.from(bytes);
   }
 
-  verifyAndEnable(userId: string, secretB32: string, code: string): Promise<boolean> {
+  private attempts: Map<string,{count:number;windowStart:number}> = new Map();
+
+  private assertRateLimit(userId: string) {
+    const max = parseInt(process.env.MFA_VERIFY_MAX_PER_MIN || '10', 10);
+    const now = Date.now();
+    const b = this.attempts.get(userId) || { count: 0, windowStart: now };
+    if (now - b.windowStart >= 60_000) { b.count = 0; b.windowStart = now; }
+    b.count += 1; this.attempts.set(userId, b);
+    if (b.count > max) throw new Error('Too many attempts');
+  }
+
+  async verifyAndEnable(userId: string, secretB32: string, code: string): Promise<boolean> {
     if (!this.isEnabled()) throw new Error('MFA not enabled');
+    this.assertRateLimit(userId);
     const secret = this.base32ToBuffer(secretB32);
     const valid = totpCode(secret).includes(code);
-    if (!valid) return Promise.resolve(false);
-    return query(
+    if (!valid) return false;
+    const ciphertext = await encryptionService.encrypt(secretB32);
+    await query(
       `UPDATE users SET mfa_enabled = true, mfa_secret = $1, updated_at = NOW() WHERE id = $2`,
-      [secretB32, userId]
-    ).then(() => true);
+      [ciphertext, userId]
+    );
+    return true;
   }
 }
 
