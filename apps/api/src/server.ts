@@ -83,6 +83,26 @@ app.use('/api/v1', sessionRoutes);
 app.use('/api/v1', idpConfigRoutes);
 app.use('/api/v1', providerAuthRoutes);
 app.use('/api/v1', commentRoutes);
+// CSRF double-submit when cookie sessions are enabled
+if ((process.env.SESSIONS_COOKIE_MODE || 'false').toLowerCase() === 'true') {
+  app.use((req, res, next) => {
+    const method = req.method.toUpperCase();
+    const needCheck = method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
+    // issue token if missing
+    const token = req.cookies?.csrfToken || require('crypto').randomBytes(16).toString('hex');
+    if (!req.cookies?.csrfToken) res.cookie('csrfToken', token, { httpOnly: false, secure: true, sameSite: 'strict' });
+    if (!needCheck) return next();
+    const header = req.get('x-csrf-token') || req.headers['x-csrf-token'];
+    if (!header || header !== token) return res.status(403).json({ error: 'CSRF token mismatch' });
+    next();
+  });
+  app.get('/csrf/refresh', (_req, res) => {
+    const token = require('crypto').randomBytes(16).toString('hex');
+    res.cookie('csrfToken', token, { httpOnly: false, secure: true, sameSite: 'strict' });
+    res.json({ token });
+  });
+}
+
 app.use('/api/v1', versionRoutes);
 app.use('/api/v1', activityRoutes);
 app.use('/api/v1', workspaceRoutes);
