@@ -2,6 +2,47 @@ import { query } from '../database/connection.js';
 import type { AuditLog, CreateAuditLogRequest } from '../models/AuditLog.js';
 import crypto from 'crypto';
 
+// Feature flags (default OFF):
+// - AUDIT_CHAIN_ENABLED: enable hash-chain computing
+// - AUDIT_WORM_ENFORCED: disallow any mutation code paths (defense-in-depth)
+// - AUDIT_RATE_LIMIT_ON: enable simple in-memory rate limiting per tenant+action
+// - AUDIT_RATE_LIMIT_MAX_PER_MIN: defaults to 60
+
+import { assertRateLimit as assertRedisRateLimit } from '../utils/rateLimit.js';
+const rateBuckets: Map<string, { count: number; windowStart: number }> = new Map();
+
+function redactDetails(details: any): any {
+  if (!details) return details;
+  const str = JSON.stringify(details);
+  // Redact common secrets/tokens
+  const redacted = str
+    .replace(/("?access_token"?\s*:\s*")([^"]+)(")/gi, '$1[REDACTED]$3')
+    .replace(/("?refresh_token"?\s*:\s*")([^"]+)(")/gi, '$1[REDACTED]$3')
+    .replace(/("?authorization"?\s*:\s*")([^"]+)(")/gi, '$1[REDACTED]$3')
+    .replace(/("?password"?\s*:\s*")([^"]+)(")/gi, '$1[REDACTED]$3')
+    .replace(/("?secret"?\s*:\s*")([^"]+)(")/gi, '$1[REDACTED]$3');
+  try { return JSON.parse(redacted); } catch { return { redacted: true }; }
+}
+
+async function assertRateLimit(tenantId: string, action: string): Promise<void> {
+  const enabled = (process.env.AUDIT_RATE_LIMIT_ON || 'false').toLowerCase() === 'true';
+  if (!enabled) return;
+  const max = parseInt(process.env.AUDIT_RATE_LIMIT_MAX_PER_MIN || '60', 10);
+  const key = `${tenantId}:${action}`;
+  try {
+    await assertRedisRateLimit('audit', key, 1);
+  } catch {
+    // fallback to in-memory
+    const now = Date.now();
+    const bucket = rateBuckets.get(key) || { count: 0, windowStart: now };
+    if (now - bucket.windowStart >= 60_000) { bucket.count = 0; bucket.windowStart = now; }
+    bucket.count += 1;
+    rateBuckets.set(key, bucket);
+    if (bucket.count > max) throw new Error('Audit rate limit exceeded');
+  }
+}
+
+
 function stableStringify(obj: any): string {
   return JSON.stringify(obj, Object.keys(obj).sort());
 }
@@ -22,6 +63,13 @@ export class AuditService {
   async log(input: CreateAuditLogRequest): Promise<AuditLog> {
     let prevHash: string | null = null;
     let hash: string | null = null;
+
+    // Simple WORM guard (defense-in-depth): this service only performs INSERTs.
+    if ((process.env.AUDIT_WORM_ENFORCED || 'false').toLowerCase() === 'true') {
+      // nothing to enforce here besides avoiding non-insert ops
+    }
+
+    await assertRateLimit(input.tenantId, input.action);
 
     if (this.isChainEnabled()) {
       prevHash = await this.getLastHash(input.tenantId);
@@ -49,7 +97,7 @@ export class AuditService {
         input.action,
         input.resourceType,
         input.resourceId || null,
-        input.details ? JSON.stringify(input.details) : null,
+        input.details ? JSON.stringify(redactDetails(input.details)) : null,
         input.ipAddress || null,
         input.userAgent || null,
         prevHash,

@@ -12,6 +12,8 @@ router.post('/gdpr/requests/:id/execute', authenticate, requireRole(['Admin','Su
 router.get('/security/vulns', authenticate, securityController.listVulnFindings.bind(securityController));
 router.get('/security/ids-events', authenticate, securityController.listIdsEvents.bind(securityController));
 router.get('/audit/verify', authenticate, securityController.verifyAuditChain.bind(securityController));
+router.get('/audit/report', authenticate, securityController.exportAuditReport.bind(securityController));
+
 
 export default router;
 

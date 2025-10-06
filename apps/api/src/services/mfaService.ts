@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { query } from '../database/connection.js';
+import { encryptionService } from './encryptionService.js';
 
 function base32Encode(buf: Buffer): string {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -75,15 +76,57 @@ export class MfaService {
     return Buffer.from(bytes);
   }
 
-  verifyAndEnable(userId: string, secretB32: string, code: string): Promise<boolean> {
+  private attempts: Map<string,{count:number;windowStart:number}> = new Map();
+
+  private assertRateLimit(userId: string) {
+    const max = parseInt(process.env.MFA_VERIFY_MAX_PER_MIN || '10', 10);
+    const now = Date.now();
+    const b = this.attempts.get(userId) || { count: 0, windowStart: now };
+    if (now - b.windowStart >= 60_000) { b.count = 0; b.windowStart = now; }
+    b.count += 1; this.attempts.set(userId, b);
+    if (b.count > max) throw new Error('Too many attempts');
+  }
+
+  async generateRecoveryCodes(userId: string, count = 10): Promise<string[]> {
+    if ((process.env.MFA_RECOVERY_CODES || 'false').toLowerCase() !== 'true') return [];
+    const codes: string[] = [];
+    const rows: Array<{ code_hash: string }>= [];
+    const pepper = process.env.MFA_RECOVERY_PEPPER || '';
+    for (let i=0;i<count;i++) {
+      const code = crypto.randomBytes(5).toString('hex');
+      codes.push(code);
+      const hash = crypto.createHash('sha256').update(code + pepper).digest('hex');
+      rows.push({ code_hash: hash });
+    }
+    for (const r of rows) {
+      await query(`INSERT INTO mfa_recovery_codes (user_id, code_hash, created_at) VALUES ($1,$2,NOW())`, [userId, r.code_hash]);
+    }
+    return codes;
+  }
+
+  async verifyRecoveryCode(userId: string, code: string): Promise<boolean> {
+    if ((process.env.MFA_RECOVERY_CODES || 'false').toLowerCase() !== 'true') return false;
+    const pepper = process.env.MFA_RECOVERY_PEPPER || '';
+    const hash = crypto.createHash('sha256').update(code + pepper).digest('hex');
+    const res = await query(`SELECT id FROM mfa_recovery_codes WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL`, [userId, hash]);
+    if (res.rows.length === 0) return false;
+    const id = res.rows[0].id;
+    await query(`UPDATE mfa_recovery_codes SET used_at = NOW() WHERE id = $1`, [id]);
+    return true;
+  }
+
+  async verifyAndEnable(userId: string, secretB32: string, code: string): Promise<boolean> {
     if (!this.isEnabled()) throw new Error('MFA not enabled');
+    this.assertRateLimit(userId);
     const secret = this.base32ToBuffer(secretB32);
     const valid = totpCode(secret).includes(code);
-    if (!valid) return Promise.resolve(false);
-    return query(
+    if (!valid) return false;
+    const ciphertext = await encryptionService.encrypt(secretB32);
+    await query(
       `UPDATE users SET mfa_enabled = true, mfa_secret = $1, updated_at = NOW() WHERE id = $2`,
-      [secretB32, userId]
-    ).then(() => true);
+      [ciphertext, userId]
+    );
+    return true;
   }
 }
 

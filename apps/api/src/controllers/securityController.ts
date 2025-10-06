@@ -78,6 +78,16 @@ export class SecurityController {
       res.json(result);
     } catch (err) { next(err); }
   }
+
+  async exportAuditReport(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const tenantId = (req as any).user?.tenantId || (req.query.tenantId as string);
+      const result = await auditService.verifyChain(tenantId, 5000);
+      const secret = process.env.ENC_MASTER_KEY || 'audit';
+      const sig = require('crypto').createHmac('sha256', secret).update(JSON.stringify(result)).digest('hex');
+      res.json({ tenantId, result, signature: sig });
+    } catch (err) { next(err); }
+  }
 }
 
 export const securityController = new SecurityController();

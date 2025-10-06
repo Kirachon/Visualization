@@ -1,4 +1,34 @@
 import * as samlify from 'samlify';
+
+// Feature flags (default OFF):
+// - SAML_REPLAY_PROTECT: cache recent assertions to prevent replay
+
+import { withRedis } from '../utils/redis.js';
+const replayCache: Map<string, number> = new Map();
+function cacheKeyFromResponse(resp: string): string {
+  // Weak heuristic: hash of response
+  return require('crypto').createHash('sha256').update(resp).digest('hex');
+}
+async function isReplayed(resp: string): Promise<boolean> {
+  const enabled = (process.env.SAML_REPLAY_PROTECT || 'false').toLowerCase() === 'true';
+  if (!enabled) return false;
+  const key = cacheKeyFromResponse(resp);
+  const now = Date.now();
+  const ttl = 5 * 60_000; // 5 minutes
+  const ts = replayCache.get(key);
+  if (ts && now - ts < ttl) return true;
+  replayCache.set(key, now);
+  // Try Redis too
+  const redisHit = await withRedis(async (r) => {
+    const sKey = `saml:replay:${key}`;
+    const exists = await r.exists(sKey);
+    if (exists) return true;
+    await r.setex(sKey, Math.ceil(ttl/1000), '1');
+    return false;
+  }, async () => false);
+  if (redisHit) return true;
+  return false;
+}
 import { query } from '../database/connection.js';
 import crypto from 'crypto';
 
@@ -47,6 +77,7 @@ export class SamlService {
 
   async handleACS(tenantId: string, config: SamlConfig, samlResponse: string): Promise<{ userId: string; email: string }> {
     if (!this.isEnabled()) throw new Error('SAML not enabled');
+    if (await isReplayed(samlResponse)) throw new Error('SAML response replay detected');
 
     const sp = samlify.ServiceProvider({
       entityID: config.issuer,

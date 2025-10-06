@@ -1,4 +1,50 @@
 import * as jose from 'jose';
+
+// Feature flags (default OFF):
+// - OIDC_STRICT: require server-stored state/nonce/code_verifier
+// - OIDC_JWKS_CACHE_TTL_MS: TTL for JWKS cache (default 600000)
+
+import { withRedis } from '../utils/redis.js';
+const stateStore: Map<string,{ nonce:string; codeVerifier:string; expiresAt:number }> = new Map();
+const jwksCache: Map<string,{ jwks: ReturnType<typeof jose.createRemoteJWKSet>; expiresAt:number }> = new Map();
+
+export async function storeOidcAuthState(state: string, nonce: string, codeVerifier: string, ttlMs = 300000){
+  const expiresAt = Date.now() + ttlMs;
+  // Try Redis first
+  await withRedis(
+    async (r) => { await r.setex(`oidc:state:${state}`, Math.ceil(ttlMs/1000), JSON.stringify({ nonce, codeVerifier })); },
+    async () => { stateStore.set(state, { nonce, codeVerifier, expiresAt }); }
+  );
+}
+
+async function consumeOidcAuthState(state: string): Promise<{ nonce:string; codeVerifier:string } | null> {
+  return withRedis(
+    async (r) => {
+      const key = `oidc:state:${state}`;
+      const val = await r.get(key);
+      if (!val) return null;
+      await r.del(key);
+      const obj = JSON.parse(val);
+      return { nonce: obj.nonce, codeVerifier: obj.codeVerifier };
+    },
+    async () => {
+      const rec = stateStore.get(state);
+      if (!rec) return null;
+      stateStore.delete(state);
+      if (rec.expiresAt < Date.now()) return null;
+      return { nonce: rec.nonce, codeVerifier: rec.codeVerifier };
+    }
+  );
+}
+
+function getRemoteJwks(jwksUri: string){
+  const ttl = parseInt(process.env.OIDC_JWKS_CACHE_TTL_MS || '600000', 10);
+  const cached = jwksCache.get(jwksUri);
+  if (cached && cached.expiresAt > Date.now()) return cached.jwks;
+  const jwks = jose.createRemoteJWKSet(new URL(jwksUri));
+  jwksCache.set(jwksUri, { jwks, expiresAt: Date.now() + ttl });
+  return jwks;
+}
 import { query } from '../database/connection.js';
 import crypto from 'crypto';
 
@@ -38,7 +84,7 @@ async function exchangeCodeForTokens(config: OidcConfig, code: string, codeVerif
 }
 
 async function validateIdToken(config: OidcConfig, idToken: string, nonce: string): Promise<jose.JWTPayload> {
-  const JWKS = jose.createRemoteJWKSet(new URL(config.jwksUri));
+  const JWKS = getRemoteJwks(config.jwksUri);
   const { payload } = await jose.jwtVerify(idToken, JWKS, {
     issuer: config.issuer,
     audience: config.clientId,
@@ -87,10 +133,31 @@ export class OidcService {
 
   async handleCallback(tenantId: string, config: OidcConfig, input: OidcCallbackInput): Promise<{ userId: string; email: string }> {
     if (!this.isEnabled()) throw new Error('OIDC not enabled');
-    const tokens = await exchangeCodeForTokens(config, input.code, input.codeVerifier);
-    const payload = await validateIdToken(config, tokens.id_token, input.nonce);
+    // Strict state/nonce/code_verifier from server store
+    const strict = (process.env.OIDC_STRICT || 'false').toLowerCase() === 'true';
+    let nonce = input.nonce;
+    let codeVerifier = input.codeVerifier;
+    const stored = await consumeOidcAuthState(input.state);
+    if (stored) { nonce = stored.nonce; codeVerifier = stored.codeVerifier; }
+    else if (strict) { throw new Error('Missing OIDC state'); }
+
+    const tokens = await exchangeCodeForTokens(config, input.code, codeVerifier);
+    const payload = await validateIdToken(config, tokens.id_token, nonce);
     const claims = mapClaims(payload);
     const userId = await jitProvision(tenantId, claims, 'oidc');
+
+	    // Optionally encrypt+persist refresh token
+	    if ((process.env.OIDC_REFRESH_ENCRYPT || 'false').toLowerCase() === 'true') {
+	      try {
+	        const refresh = (tokens as any).refresh_token || (tokens as any).refresh_token?.toString?.();
+	        if (refresh) {
+	          const { encryptionService } = await import('./encryptionService.js');
+	          const enc = await encryptionService.encrypt(String(refresh));
+	          await query(`INSERT INTO oidc_tokens (user_id, provider, refresh_encrypted) VALUES ($1,$2,$3)`, [userId, 'oidc', enc]);
+	        }
+	      } catch (e) { console.error('[OIDC] refresh encrypt/persist error', e); }
+	    }
+
     return { userId, email: claims.email };
   }
 }
