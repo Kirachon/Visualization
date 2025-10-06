@@ -87,6 +87,34 @@ export class MfaService {
     if (b.count > max) throw new Error('Too many attempts');
   }
 
+  async generateRecoveryCodes(userId: string, count = 10): Promise<string[]> {
+    if ((process.env.MFA_RECOVERY_CODES || 'false').toLowerCase() !== 'true') return [];
+    const codes: string[] = [];
+    const rows: Array<{ code_hash: string }>= [];
+    const pepper = process.env.MFA_RECOVERY_PEPPER || '';
+    for (let i=0;i<count;i++) {
+      const code = crypto.randomBytes(5).toString('hex');
+      codes.push(code);
+      const hash = crypto.createHash('sha256').update(code + pepper).digest('hex');
+      rows.push({ code_hash: hash });
+    }
+    for (const r of rows) {
+      await query(`INSERT INTO mfa_recovery_codes (user_id, code_hash, created_at) VALUES ($1,$2,NOW())`, [userId, r.code_hash]);
+    }
+    return codes;
+  }
+
+  async verifyRecoveryCode(userId: string, code: string): Promise<boolean> {
+    if ((process.env.MFA_RECOVERY_CODES || 'false').toLowerCase() !== 'true') return false;
+    const pepper = process.env.MFA_RECOVERY_PEPPER || '';
+    const hash = crypto.createHash('sha256').update(code + pepper).digest('hex');
+    const res = await query(`SELECT id FROM mfa_recovery_codes WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL`, [userId, hash]);
+    if (res.rows.length === 0) return false;
+    const id = res.rows[0].id;
+    await query(`UPDATE mfa_recovery_codes SET used_at = NOW() WHERE id = $1`, [id]);
+    return true;
+  }
+
   async verifyAndEnable(userId: string, secretB32: string, code: string): Promise<boolean> {
     if (!this.isEnabled()) throw new Error('MFA not enabled');
     this.assertRateLimit(userId);

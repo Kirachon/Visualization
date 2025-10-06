@@ -8,6 +8,7 @@ import crypto from 'crypto';
 // - AUDIT_RATE_LIMIT_ON: enable simple in-memory rate limiting per tenant+action
 // - AUDIT_RATE_LIMIT_MAX_PER_MIN: defaults to 60
 
+import { assertRateLimit as assertRedisRateLimit } from '../utils/rateLimit.js';
 const rateBuckets: Map<string, { count: number; windowStart: number }> = new Map();
 
 function redactDetails(details: any): any {
@@ -23,17 +24,22 @@ function redactDetails(details: any): any {
   try { return JSON.parse(redacted); } catch { return { redacted: true }; }
 }
 
-function assertRateLimit(tenantId: string, action: string): void {
+async function assertRateLimit(tenantId: string, action: string): Promise<void> {
   const enabled = (process.env.AUDIT_RATE_LIMIT_ON || 'false').toLowerCase() === 'true';
   if (!enabled) return;
   const max = parseInt(process.env.AUDIT_RATE_LIMIT_MAX_PER_MIN || '60', 10);
   const key = `${tenantId}:${action}`;
-  const now = Date.now();
-  const bucket = rateBuckets.get(key) || { count: 0, windowStart: now };
-  if (now - bucket.windowStart >= 60_000) { bucket.count = 0; bucket.windowStart = now; }
-  bucket.count += 1;
-  rateBuckets.set(key, bucket);
-  if (bucket.count > max) throw new Error('Audit rate limit exceeded');
+  try {
+    await assertRedisRateLimit('audit', key, 1);
+  } catch {
+    // fallback to in-memory
+    const now = Date.now();
+    const bucket = rateBuckets.get(key) || { count: 0, windowStart: now };
+    if (now - bucket.windowStart >= 60_000) { bucket.count = 0; bucket.windowStart = now; }
+    bucket.count += 1;
+    rateBuckets.set(key, bucket);
+    if (bucket.count > max) throw new Error('Audit rate limit exceeded');
+  }
 }
 
 
@@ -63,7 +69,7 @@ export class AuditService {
       // nothing to enforce here besides avoiding non-insert ops
     }
 
-    assertRateLimit(input.tenantId, input.action);
+    await assertRateLimit(input.tenantId, input.action);
 
     if (this.isChainEnabled()) {
       prevHash = await this.getLastHash(input.tenantId);

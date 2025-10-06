@@ -25,6 +25,7 @@ import activityRoutes from './routes/activityRoutes.js';
 import workspaceRoutes from './routes/workspaceRoutes.js';
 import metadataRoutes from './routes/metadataRoutes.js';
 import securityRoutes from './routes/securityRoutes.js';
+import maskingRoutes from './routes/maskingRoutes.js';
 import { auditService } from './services/auditService.js';
 import { query as dbQuery } from './database/connection.js';
 import metricsRoutes from './routes/metricsRoutes.js';
@@ -87,6 +88,7 @@ app.use('/api/v1', activityRoutes);
 app.use('/api/v1', workspaceRoutes);
 app.use('/api/v1', metadataRoutes);
 app.use('/api/v1', securityRoutes);
+app.use('/api/v1', maskingRoutes);
 if ((process.env.METRICS_ENABLED || 'false').toLowerCase() === 'true') {
   app.use('/', metricsRoutes);
 }

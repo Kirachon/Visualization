@@ -145,6 +145,19 @@ export class OidcService {
     const payload = await validateIdToken(config, tokens.id_token, nonce);
     const claims = mapClaims(payload);
     const userId = await jitProvision(tenantId, claims, 'oidc');
+
+	    // Optionally encrypt+persist refresh token
+	    if ((process.env.OIDC_REFRESH_ENCRYPT || 'false').toLowerCase() === 'true') {
+	      try {
+	        const refresh = (tokens as any).refresh_token || (tokens as any).refresh_token?.toString?.();
+	        if (refresh) {
+	          const { encryptionService } = await import('./encryptionService.js');
+	          const enc = await encryptionService.encrypt(String(refresh));
+	          await query(`INSERT INTO oidc_tokens (user_id, provider, refresh_encrypted) VALUES ($1,$2,$3)`, [userId, 'oidc', enc]);
+	        }
+	      } catch (e) { console.error('[OIDC] refresh encrypt/persist error', e); }
+	    }
+
     return { userId, email: claims.email };
   }
 }
