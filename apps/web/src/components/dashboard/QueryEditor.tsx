@@ -117,12 +117,12 @@ export const QueryEditor: React.FC<QueryEditorProps> = ({ dataSourceId }) => {
             </Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
               {result.metadata?.engine && (
-                <Box component="span" sx={{ px: 1, py: 0.5, borderRadius: 1, bgcolor: 'action.hover' }}>
+                <Box component="span" title="Execution engine" sx={{ px: 1, py: 0.5, borderRadius: 1, bgcolor: 'action.hover' }}>
                   Engine: {result.metadata.engine.toUpperCase()}
                 </Box>
               )}
               {result.metadata?.cacheHit !== undefined && (
-                <Box component="span" sx={{ px: 1, py: 0.5, borderRadius: 1, bgcolor: result.metadata.cacheHit ? 'success.light' : 'action.hover' }}>
+                <Box component="span" title="Cache hit status" sx={{ px: 1, py: 0.5, borderRadius: 1, bgcolor: result.metadata.cacheHit ? 'success.light' : 'action.hover' }}>
                   Cache: {result.metadata.cacheHit ? 'HIT' : 'MISS'}
                 </Box>
               )}
