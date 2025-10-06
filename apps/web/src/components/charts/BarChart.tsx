@@ -72,7 +72,23 @@ const BarChart: React.FC<BarChartProps> = ({
       .selectAll('text')
       .style('font-size', '10px');
 
+    // Y axis
     g.append('g').call(d3.axisLeft(y)).selectAll('text').style('font-size', '10px');
+
+    // Optional horizontal gridlines
+    if (styleCtx.grid) {
+      g.append('g')
+        .attr('class', 'grid')
+        .call(
+          d3
+            .axisLeft(y)
+            .tickSize(-innerW)
+            .tickFormat(() => '') as any,
+        )
+        .selectAll('line')
+        .attr('stroke', '#e0e0e0')
+        .attr('stroke-opacity', 0.7);
+    }
 
     g.selectAll('.bar')
       .data(data)

@@ -4,6 +4,7 @@ import dataSourceReducer from './dataSourceSlice';
 import dashboardsReducer from './dashboardsSlice';
 import builderReducer from './builderSlice';
 import usersReducer from './userSlice';
+import filtersReducer from './filtersSlice';
 
 export const store = configureStore({
   reducer: {
@@ -12,6 +13,7 @@ export const store = configureStore({
     dashboards: dashboardsReducer,
     builder: builderReducer,
     users: usersReducer,
+    filters: filtersReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
