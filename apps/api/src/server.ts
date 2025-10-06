@@ -142,11 +142,18 @@ if ((process.env.METRICS_ENABLED || 'false').toLowerCase() === 'true') {
 })();
 
 // Metadata search continuous indexing (feature-flagged)
-(function scheduleSearchIndexing(){
+(async function scheduleBackground(){
   try {
+    const { getRedis } = await import('./utils/redis.js');
+    if (getRedis()) {
+      const { initScheduler } = await import('./jobs/scheduler.js');
+      await initScheduler();
+      return;
+    }
+    // Fallback: only search indexing via interval
     const enabled = (process.env.SEARCH_CONTINUOUS_INDEX || 'false').toLowerCase() === 'true';
     if (!enabled) return;
-    const intervalMs = parseInt(process.env.SEARCH_INDEX_INTERVAL_MS || '300000', 10); // 5m default
+    const intervalMs = parseInt(process.env.SEARCH_INDEX_INTERVAL_MS || '300000', 10);
     const { searchService } = require('./services/searchService.js');
     setInterval(async () => {
       try {
@@ -157,7 +164,7 @@ if ((process.env.METRICS_ENABLED || 'false').toLowerCase() === 'true') {
         }
       } catch (e) { console.error('[SEARCH] index job error', e); }
     }, intervalMs);
-  } catch (e) { console.error('[SEARCH] schedule init error', e); }
+  } catch (e) { console.error('[BG] schedule init error', e); }
 })();
 
 app.get('/api/v1', (_req: Request, res: Response) => {
