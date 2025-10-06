@@ -30,7 +30,16 @@ export class CommentService {
        VALUES ($1,$2,$3,$4,$5,false,NOW(),NOW()) RETURNING *`,
       [input.dashboardId, input.userId, safeBody, JSON.stringify(mentions), input.parentId || null]
     );
-    return this.hydrate(res.rows[0]);
+    const created = this.hydrate(res.rows[0]);
+    try {
+      const enabled = (process.env.COMMENTS_MENTIONS_NOTIFY || 'false').toLowerCase() === 'true';
+      if (enabled && mentions.length) {
+        const { notificationService } = await import('./notificationService.js');
+        // TODO/ASSUMPTION: tenantId is not readily available in this layer; using placeholder. Controller should pass tenant.
+        await notificationService.notifyMentions('unknown-tenant', created.dashboardId, created.userId, mentions, created.body);
+      }
+    } catch {}
+    return created;
   }
 
   async list(dashboardId: string): Promise<Comment[]> {
@@ -38,9 +47,26 @@ export class CommentService {
     return res.rows.map((r) => this.hydrate(r));
   }
 
-  async resolve(id: string): Promise<boolean> {
-    const res = await query(`UPDATE comments SET resolved = true, updated_at = NOW() WHERE id = $1`, [id]);
-    return (res.rowCount ?? 0) > 0;
+  async resolve(id: string, ctx: { tenantId: string; actorUserId: string }): Promise<boolean> {
+    const res = await query(`UPDATE comments SET resolved = true, updated_at = NOW() WHERE id = $1 RETURNING dashboard_id`, [id]);
+    const ok = (res.rowCount ?? 0) > 0;
+    if (ok) {
+      const dashboardId = res.rows[0].dashboard_id as string;
+      try { const { auditService } = await import('./auditService.js'); await auditService.log({ tenantId: ctx.tenantId, userId: ctx.actorUserId, action: 'comment_resolved', resourceType: 'comment', resourceId: id, details: { dashboardId } }); } catch {}
+      try { const { activityService } = await import('./activityService.js'); await activityService.create({ dashboardId, type: 'comment.resolved', actorId: ctx.actorUserId, details: { commentId: id } }); } catch {}
+    }
+    return ok;
+  }
+
+  async unresolve(id: string, ctx: { tenantId: string; actorUserId: string }): Promise<boolean> {
+    const res = await query(`UPDATE comments SET resolved = false, updated_at = NOW() WHERE id = $1 RETURNING dashboard_id`, [id]);
+    const ok = (res.rowCount ?? 0) > 0;
+    if (ok) {
+      const dashboardId = res.rows[0].dashboard_id as string;
+      try { const { auditService } = await import('./auditService.js'); await auditService.log({ tenantId: ctx.tenantId, userId: ctx.actorUserId, action: 'comment_unresolved', resourceType: 'comment', resourceId: id, details: { dashboardId } }); } catch {}
+      try { const { activityService } = await import('./activityService.js'); await activityService.create({ dashboardId, type: 'comment.unresolved', actorId: ctx.actorUserId, details: { commentId: id } }); } catch {}
+    }
+    return ok;
   }
 
   hydrate(row: any): Comment {

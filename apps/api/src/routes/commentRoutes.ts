@@ -7,6 +7,7 @@ const router = Router();
 router.post('/comments', authenticate, commentController.create.bind(commentController));
 router.get('/comments', authenticate, commentController.list.bind(commentController));
 router.put('/comments/:id/resolve', authenticate, commentController.resolve.bind(commentController));
+router.put('/comments/:id/unresolve', authenticate, commentController.unresolve.bind(commentController));
 
 export default router;
 

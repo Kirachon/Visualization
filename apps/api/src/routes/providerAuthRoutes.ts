@@ -33,6 +33,9 @@ router.get('/auth/oidc/callback', async (req, res, next) => {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const session = await sessionService.create({ userId: result.userId, token, expiresAt, ipAddress: req.ip, userAgent: req.headers['user-agent'] });
     if ((process.env.SESSIONS_COOKIE_MODE || 'false').toLowerCase() === 'true') {
+      const old = (req as any).cookies?.sid;
+      if (old) { try { await sessionService.revoke(old); } catch {}
+      }
       res.cookie('sid', session.token, { httpOnly: true, secure: true, sameSite: 'strict', expires: expiresAt, path: '/' });
       res.json({ userId: result.userId, email: result.email });
     } else {
@@ -59,6 +62,9 @@ router.post('/auth/saml/acs', async (req, res, next) => {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const session = await sessionService.create({ userId: result.userId, token, expiresAt, ipAddress: req.ip, userAgent: req.headers['user-agent'] });
     if ((process.env.SESSIONS_COOKIE_MODE || 'false').toLowerCase() === 'true') {
+      const old = (req as any).cookies?.sid;
+      if (old) { try { await sessionService.revoke(old); } catch {}
+      }
       res.cookie('sid', session.token, { httpOnly: true, secure: true, sameSite: 'strict', expires: expiresAt, path: '/' });
       res.json({ userId: result.userId, email: result.email });
     } else {
@@ -85,6 +91,9 @@ router.post('/auth/ldap/login', async (req, res, next) => {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const session = await sessionService.create({ userId: result.userId, token, expiresAt, ipAddress: req.ip, userAgent: req.headers['user-agent'] });
     if ((process.env.SESSIONS_COOKIE_MODE || 'false').toLowerCase() === 'true') {
+      const old = (req as any).cookies?.sid;
+      if (old) { try { await sessionService.revoke(old); } catch {}
+      }
       res.cookie('sid', session.token, { httpOnly: true, secure: true, sameSite: 'strict', expires: expiresAt, path: '/' });
       res.json({ userId: result.userId, email: result.email });
     } else {

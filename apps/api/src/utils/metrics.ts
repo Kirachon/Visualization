@@ -48,6 +48,28 @@ export const authErrors = new Counter({
   registers: enabled ? [registry] : [],
 });
 
+// Jobs
+export const jobDuration = new Histogram({
+  name: 'api.job_duration_ms',
+  help: 'Background job duration in ms',
+  labelNames: ['job','tenant','status'],
+  buckets: [5,10,25,50,100,250,500,1000,5000,10000],
+  registers: enabled ? [registry] : [],
+});
+export const jobFailures = new Counter({
+  name: 'api.job_failures_total',
+  help: 'Background job failures',
+  labelNames: ['job','tenant'],
+  registers: enabled ? [registry] : [],
+});
+export const searchIndexLag = new Histogram({
+  name: 'api.search_index_lag_ms',
+  help: 'Search index lag in ms',
+  labelNames: ['tenant'],
+  buckets: [1000,5000,15000,60000,300000,900000],
+  registers: enabled ? [registry] : [],
+});
+
 export async function metricsText(): Promise<string> {
   if (!enabled) return '# metrics disabled';
   return registry.metrics();
