@@ -49,6 +49,38 @@ async function jitProvision(tenantId: string, attrs: ReturnType<typeof mapAttrib
 }
 
 export class LdapService {
+  private pool: Map<string, any> = new Map();
+  private async getClient(url: string, strictTls: boolean) {
+    const pooling = (process.env.LDAP_POOLING || 'false').toLowerCase() === 'true';
+    const key = url + '|' + String(strictTls);
+    if (pooling && this.pool.has(key)) return this.pool.get(key);
+    const client = ldap.createClient({ url, timeout: 10000, connectTimeout: 5000, tlsOptions: { rejectUnauthorized: strictTls }, reconnect: pooling });
+    if (pooling) this.pool.set(key, client);
+    return client;
+  }
+
+  private async isLocked(tenantId: string, username: string): Promise<boolean> {
+    const threshold = parseInt(process.env.LDAP_LOCKOUT_THRESHOLD || '5', 10);
+    if (threshold <= 0) return false;
+    const key = `ldap:lock:${tenantId}:${username}`;
+    try {
+      const { withRedis } = await import('../utils/redis.js');
+      return await withRedis(async (r) => { const c = await r.get(key); return c ? parseInt(c,10) >= threshold : false; }, async () => { return (this as any)._memLock?.get(key) >= threshold; });
+    } catch { return false; }
+  }
+
+  private async recordFailure(tenantId: string, username: string): Promise<void> {
+    const windowSec = parseInt(process.env.LDAP_LOCKOUT_WINDOW_SEC || '300', 10);
+    const key = `ldap:lock:${tenantId}:${username}`;
+    try {
+      const { withRedis } = await import('../utils/redis.js');
+      await withRedis(async (r) => { const n = await r.incr(key); if (n === 1) await r.expire(key, windowSec); return; }, async () => {
+        (this as any)._memLock = (this as any)._memLock || new Map();
+        const cur = ((this as any)._memLock.get(key) || 0) + 1; (this as any)._memLock.set(key, cur);
+        setTimeout(() => { (this as any)._memLock.delete(key); }, windowSec * 1000);
+      });
+    } catch {}
+  }
   private isEnabled(): boolean { return (process.env.LDAP_ENABLED || 'false').toLowerCase() === 'true'; }
 
   async login(tenantId: string, config: LdapConfig, username: string, password: string): Promise<{ userId: string; email: string }> {
@@ -56,7 +88,7 @@ export class LdapService {
 
     return new Promise((resolve, reject) => {
       const strictTls = (process.env.LDAP_STRICT_TLS || 'false').toLowerCase() === 'true';
-      const client = ldap.createClient({ url: config.url, timeout: 10000, connectTimeout: 5000, tlsOptions: { rejectUnauthorized: strictTls } });
+      this.getClient(config.url, strictTls).then((client) => {
 
       client.bind(config.bindDN, config.bindPassword, (bindErr: any) => {
         if (bindErr) { client.unbind(); return reject(new Error('LDAP bind failed')); }
@@ -74,23 +106,36 @@ export class LdapService {
           searchRes.on('error', (err: any) => { client.unbind(); reject(err); });
           searchRes.on('end', async () => {
             client.unbind();
-            if (!entry) return reject(new Error('User not found in LDAP'));
+            if (!entry) {
+              reject(new Error('Invalid credentials'));
+              return;
+            }
+            // Lockout check
+            const locked = await this.isLocked(tenantId, username);
+            if (locked) { reject(new Error('Account temporarily locked')); return; }
 
             // Verify user password by attempting bind with user DN
-            const userClient = ldap.createClient({ url: config.url, timeout: 10000, connectTimeout: 5000, tlsOptions: { rejectUnauthorized: strictTls } });
+            const userClient = await this.getClient(config.url, strictTls);
             userClient.bind(entry.dn, password, async (userBindErr: any) => {
               userClient.unbind();
-              if (userBindErr) return reject(new Error('Invalid credentials'));
+              if (userBindErr) {
+                await this.recordFailure(tenantId, username);
+                try { const { auditService } = await import('./auditService.js'); await auditService.log({ tenantId, action: 'ldap_login_failed', resourceType: 'ldap', details: { reason: 'invalid_credentials', username_hash: crypto.createHash('sha256').update(username).digest('hex') } }); } catch {}
+                return reject(new Error('Invalid credentials'));
+              }
 
               try {
                 const mapped = mapAttributes(entry, config.attributeMap);
                 const userId = await jitProvision(tenantId, mapped, 'ldap');
+                try { const { auditService } = await import('./auditService.js'); await auditService.log({ tenantId, action: 'ldap_login_success', resourceType: 'ldap', details: { username_hash: crypto.createHash('sha256').update(username).digest('hex') } }); } catch {}
                 resolve({ userId, email: mapped.email });
               } catch (err) { reject(err); }
             });
           });
         });
-      });
+        }); // end client.bind
+
+      }); // end getClient then
     });
   }
 }
