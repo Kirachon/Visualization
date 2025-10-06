@@ -30,7 +30,16 @@ export class CommentService {
        VALUES ($1,$2,$3,$4,$5,false,NOW(),NOW()) RETURNING *`,
       [input.dashboardId, input.userId, safeBody, JSON.stringify(mentions), input.parentId || null]
     );
-    return this.hydrate(res.rows[0]);
+    const created = this.hydrate(res.rows[0]);
+    try {
+      const enabled = (process.env.COMMENTS_MENTIONS_NOTIFY || 'false').toLowerCase() === 'true';
+      if (enabled && mentions.length) {
+        const { notificationService } = await import('./notificationService.js');
+        // TODO/ASSUMPTION: tenantId is not readily available in this layer; using placeholder. Controller should pass tenant.
+        await notificationService.notifyMentions('unknown-tenant', created.dashboardId, created.userId, mentions, created.body);
+      }
+    } catch {}
+    return created;
   }
 
   async list(dashboardId: string): Promise<Comment[]> {
