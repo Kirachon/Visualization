@@ -83,9 +83,10 @@ export class SecurityController {
     try {
       const tenantId = (req as any).user?.tenantId || (req.query.tenantId as string);
       const result = await auditService.verifyChain(tenantId, 5000);
-      const secret = process.env.ENC_MASTER_KEY || 'audit';
-      const sig = require('crypto').createHmac('sha256', secret).update(JSON.stringify(result)).digest('hex');
-      res.json({ tenantId, result, signature: sig });
+      const payload = { tenantId, generatedAt: new Date().toISOString(), result };
+      const { signAuditPayload } = await import('../utils/signing.js');
+      const { keyId, signature } = signAuditPayload(payload);
+      res.json({ keyId, signature, payload });
     } catch (err) { next(err); }
   }
 }
