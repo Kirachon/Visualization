@@ -19,9 +19,10 @@ export interface ChartContainerProps {
   config?: ChartConfig;
   themeName?: 'light' | 'dark' | 'high-contrast';
   paletteName?: string;
+  liveMode?: boolean;
 }
 
-const ChartContainer: React.FC<ChartContainerProps> = ({ bindings, children, maxRows = 1000, config, themeName = 'light', paletteName = 'categorical' }) => {
+const ChartContainer: React.FC<ChartContainerProps> = ({ bindings, children, maxRows = 1000, config, themeName = 'light', paletteName = 'categorical', liveMode: _liveMode = false }) => {
 
   const { t } = useTranslation();
   const [state, setState] = useState<{ loading: boolean; error?: string; data: any[] }>({
@@ -38,6 +39,7 @@ const ChartContainer: React.FC<ChartContainerProps> = ({ bindings, children, max
 
   useEffect(() => {
     let mounted = true;
+    const ctl = new AbortController();
     (async () => {
       if (disabled) {
         setState({ loading: false, data: [], error: undefined });
@@ -48,6 +50,7 @@ const ChartContainer: React.FC<ChartContainerProps> = ({ bindings, children, max
         const res: QueryResult = await dataSourceService.executeQuery(
           bindings!.dataSourceId,
           queryReq,
+          { signal: ctl.signal },
         );
         if (!mounted) return;
         setState({
@@ -63,6 +66,7 @@ const ChartContainer: React.FC<ChartContainerProps> = ({ bindings, children, max
     })();
     return () => {
       mounted = false;
+      ctl.abort();
     };
   }, [bindings?.dataSourceId, bindings?.query, queryReq, disabled, t]);
 
@@ -111,7 +115,7 @@ const ChartContainer: React.FC<ChartContainerProps> = ({ bindings, children, max
 
   return (
     <Box role="figure" aria-label={aria} data-theme={chartTheme.name} data-palette={paletteName}>
-      <ChartStyleContext.Provider value={{ themeName: chartTheme.name, palette, ariaLabel: aria }}>
+      <ChartStyleContext.Provider value={{ themeName: chartTheme.name, palette, ariaLabel: aria, grid: !!config?.grid }}>
         {children({ data: state.data, loading: false })}
       </ChartStyleContext.Provider>
     </Box>
