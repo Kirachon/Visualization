@@ -1,0 +1,45 @@
+{
+  "name": "bi-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Open-Source Business Intelligence Platform",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev:api & npm run dev:web",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "build": "npm run build --workspaces",
+    "build:web": "npm run build --workspace=apps/web",
+    "build:api": "npm run build --workspace=apps/api",
+    "test": "npm run test --workspaces",
+    "test:coverage": "npm run test:coverage --workspaces",
+    "lint": "npm run lint --workspaces",
+    "migrate": "node scripts/migrate.sh",
+    "seed": "node scripts/seed.sh"
+  },
+  "engines": {
+    "node": ">=20.11.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kirachon/Visualization.git"
+  },
+  "keywords": [
+    "business-intelligence",
+    "analytics",
+    "dashboard",
+    "visualization",
+    "open-source"
+  ],
+  "author": "BI Platform Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+}
+

@@ -1,4 +1,4 @@
-import express, { Application, Request, Response, NextFunction } from 'express';
+import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -8,6 +8,7 @@ import { logger } from './logger/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import authRoutes from './routes/authRoutes.js';
+import mfaRoutes from './routes/mfaRoutes.js';
 import healthRoutes from './routes/healthRoutes.js';
 import dataSourceRoutes from './routes/dataSourceRoutes.js';
 import queryRoutes from './routes/queryRoutes.js';
@@ -15,6 +16,15 @@ import dashboardRoutes from './routes/dashboardRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import dashboardSharingRoutes from './routes/dashboardSharingRoutes.js';
 import perfRoutes from './routes/perfRoutes.js';
+import sessionRoutes from './routes/sessionRoutes.js';
+import idpConfigRoutes from './routes/idpConfigRoutes.js';
+import providerAuthRoutes from './routes/providerAuthRoutes.js';
+import commentRoutes from './routes/commentRoutes.js';
+import versionRoutes from './routes/versionRoutes.js';
+import activityRoutes from './routes/activityRoutes.js';
+import workspaceRoutes from './routes/workspaceRoutes.js';
+import metadataRoutes from './routes/metadataRoutes.js';
+import securityRoutes from './routes/securityRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -57,15 +67,25 @@ app.use(requestLogger);
 
 // API routes
 app.use('/api/v1', healthRoutes);
-app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/auth', authLimiter, authRoutes);
+app.use('/api/v1/auth', mfaRoutes);
 app.use('/api/v1', dataSourceRoutes);
 app.use('/api/v1', queryRoutes);
 app.use('/api/v1', dashboardRoutes);
 app.use('/api/v1', userRoutes);
 app.use('/api/v1', dashboardSharingRoutes);
 app.use('/api/v1', perfRoutes);
+app.use('/api/v1', sessionRoutes);
+app.use('/api/v1', idpConfigRoutes);
+app.use('/api/v1', providerAuthRoutes);
+app.use('/api/v1', commentRoutes);
+app.use('/api/v1', versionRoutes);
+app.use('/api/v1', activityRoutes);
+app.use('/api/v1', workspaceRoutes);
+app.use('/api/v1', metadataRoutes);
+app.use('/api/v1', securityRoutes);
 
-app.get('/api/v1', (req: Request, res: Response) => {
+app.get('/api/v1', (_req: Request, res: Response) => {
   res.json({
     message: 'BI Platform API v1',
     version: '1.0.0',

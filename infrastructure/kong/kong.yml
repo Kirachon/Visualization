@@ -1,0 +1,79 @@
+_format_version: "3.0"
+
+services:
+  - name: bi-platform-api
+    url: http://api:3001
+    routes:
+      - name: api-route
+        paths:
+          - /api
+        strip_path: false
+        protocols:
+          - http
+          - https
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - http://localhost:3000
+            - https://bi-platform.com
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - PATCH
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+          credentials: true
+          max_age: 3600
+
+      - name: rate-limiting
+        config:
+          minute: 100
+          hour: 1000
+          policy: local
+
+      - name: request-size-limiting
+        config:
+          allowed_payload_size: 10
+
+      - name: response-ratelimiting
+        config:
+          limits:
+            default:
+              minute: 100
+
+  - name: bi-platform-web
+    url: http://web:80
+    routes:
+      - name: web-route
+        paths:
+          - /
+        strip_path: false
+        protocols:
+          - http
+          - https
+
+# JWT Plugin for protected routes
+plugins:
+  - name: jwt
+    route: api-route
+    config:
+      uri_param_names:
+        - jwt
+      claims_to_verify:
+        - exp
+      key_claim_name: iss
+      secret_is_base64: false
+
+consumers:
+  - username: bi-platform-service
+    jwt_secrets:
+      - key: bi-platform-issuer
+        algorithm: HS256
+        secret: your-super-secret-jwt-key
+

@@ -71,7 +71,7 @@ export class DataSourceService {
 
   async remove(id: string, tenantId: string): Promise<boolean> {
     const res = await query(`DELETE FROM data_sources WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
-    return res.rowCount > 0;
+    return (res.rowCount ?? 0) > 0;
   }
 
   async testConnection(cfg: any): Promise<{ ok: boolean; error?: string }>{
