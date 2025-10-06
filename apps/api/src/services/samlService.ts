@@ -72,12 +72,19 @@ async function jitProvision(tenantId: string, attrs: ReturnType<typeof mapAttrib
   return userId;
 }
 
+
+
 export class SamlService {
   private isEnabled(): boolean { return (process.env.SAML_ENABLED || 'false').toLowerCase() === 'true'; }
 
   async handleACS(tenantId: string, config: SamlConfig, samlResponse: string): Promise<{ userId: string; email: string }> {
     if (!this.isEnabled()) throw new Error('SAML not enabled');
     if (await isReplayed(samlResponse)) throw new Error('SAML response replay detected');
+    try { await this.validateStrict(config, samlResponse); } catch (e:any) {
+      try { const { auditService } = await import('./auditService.js'); await auditService.log({ tenantId, action: 'saml_acs_failure', resourceType: 'saml', details: { reason: e?.message || 'strict validation failed' } }); } catch {}
+      throw e;
+    }
+    await this.cacheIdpMetadata(tenantId, config);
 
     const sp = samlify.ServiceProvider({
       entityID: config.issuer,
@@ -94,12 +101,38 @@ export class SamlService {
     const parseResult = await sp.parseLoginResponse(idp, 'post', { body: { SAMLResponse: samlResponse } });
     const extract = parseResult.extract;
     const attributes = extract.attributes || {};
+
+
     const nameID = extract.nameID || '';
 
     const mapped = mapAttributes({ ...attributes, nameID });
     const userId = await jitProvision(tenantId, mapped, 'saml');
     return { userId, email: mapped.email };
   }
+
+  private async validateStrict(config: SamlConfig, samlResponse: string): Promise<void> {
+    const strict = (process.env.SAML_STRICT || 'false').toLowerCase() === 'true';
+    if (!strict) return;
+    const xml = Buffer.from(samlResponse, 'base64').toString('utf8');
+    const hasSig = /<\w*:Signature[\s>]/.test(xml);
+    if (!hasSig) throw new Error('SAML strict: missing XMLDSig signature');
+    if (!xml.includes(`<Audience>${config.issuer}</Audience>`)) throw new Error('SAML strict: audience mismatch');
+    if (!xml.includes(`Recipient=\"${config.callbackUrl}\"`) && !xml.includes(`Recipient=\"${config.callbackUrl}\"`)) throw new Error('SAML strict: recipient mismatch');
+    const skew = parseInt(process.env.SAML_CLOCK_SKEW_SEC || '120', 10) * 1000;
+    const nbMatch = xml.match(/NotBefore=\"([^\"]+)\"/);
+    const naMatch = xml.match(/NotOnOrAfter=\"([^\"]+)\"/);
+    const now = Date.now();
+    if (nbMatch) { const nb = Date.parse(nbMatch[1]); if (now + skew < nb) throw new Error('SAML strict: assertion not yet valid'); }
+    if (naMatch) { const na = Date.parse(naMatch[1]); if (now - skew >= na) throw new Error('SAML strict: assertion expired'); }
+  }
+
+  private async cacheIdpMetadata(tenantId: string, config: SamlConfig): Promise<void> {
+    const ttlMs = parseInt(process.env.SAML_METADATA_TTL_MS || '3600000', 10);
+    const key = `saml:md:${tenantId}`;
+    const digest = require('crypto').createHash('sha256').update(config.cert || '').digest('hex');
+    await withRedis(async (r) => { await r.setex(key, Math.ceil(ttlMs/1000), digest); }, async () => {});
+  }
+
 }
 
 export const samlService = new SamlService();
