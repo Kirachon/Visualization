@@ -27,6 +27,7 @@ import metadataRoutes from './routes/metadataRoutes.js';
 import securityRoutes from './routes/securityRoutes.js';
 import { auditService } from './services/auditService.js';
 import { query as dbQuery } from './database/connection.js';
+import metricsRoutes from './routes/metricsRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -86,6 +87,9 @@ app.use('/api/v1', activityRoutes);
 app.use('/api/v1', workspaceRoutes);
 app.use('/api/v1', metadataRoutes);
 app.use('/api/v1', securityRoutes);
+if ((process.env.METRICS_ENABLED || 'false').toLowerCase() === 'true') {
+  app.use('/', metricsRoutes);
+}
 
 // Scheduled audit verification (feature-flagged)
 (function scheduleAuditVerify(){
