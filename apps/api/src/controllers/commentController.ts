@@ -24,7 +24,20 @@ export class CommentController {
   async resolve(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const ok = await commentService.resolve(id);
+      const tenantId = (req as any).user?.tenantId || (req.body?.tenantId as string);
+      const actorUserId = req.user!.userId;
+      const ok = await commentService.resolve(id, { tenantId, actorUserId });
+      if (!ok) { res.status(404).json({ error: 'Comment not found' }); return; }
+      res.status(204).send();
+    } catch (err) { next(err); }
+  }
+
+  async unresolve(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const tenantId = (req as any).user?.tenantId || (req.body?.tenantId as string);
+      const actorUserId = req.user!.userId;
+      const ok = await commentService.unresolve(id, { tenantId, actorUserId });
       if (!ok) { res.status(404).json({ error: 'Comment not found' }); return; }
       res.status(204).send();
     } catch (err) { next(err); }
