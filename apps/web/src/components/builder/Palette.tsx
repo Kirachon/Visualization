@@ -3,14 +3,30 @@ import { Box, ButtonBase, Typography } from '@mui/material';
 import classNames from 'classnames';
 
 const types = [
-  { type: 'bar', label: 'Bar' },
-  { type: 'line', label: 'Line' },
-  { type: 'pie', label: 'Pie' },
-  { type: 'table', label: 'Table' },
+  { type: 'bar', label: 'Bar', category: 'Basic' },
+  { type: 'line', label: 'Line', category: 'Basic' },
+  { type: 'area', label: 'Area', category: 'Basic' },
+  { type: 'pie', label: 'Pie', category: 'Basic' },
+  { type: 'donut', label: 'Donut', category: 'Basic' },
+  { type: 'scatter', label: 'Scatter', category: 'Basic' },
+  { type: 'stackedBar', label: 'Stacked Bar', category: 'Basic' },
+  { type: 'histogram', label: 'Histogram', category: 'Statistical' },
+  { type: 'table', label: 'Table', category: 'Data' },
 ] as const;
 
 export interface PaletteProps {
-  onAdd: (type: 'bar' | 'line' | 'pie' | 'table') => void;
+  onAdd: (
+    type:
+      | 'bar'
+      | 'line'
+      | 'area'
+      | 'pie'
+      | 'donut'
+      | 'scatter'
+      | 'stackedBar'
+      | 'histogram'
+      | 'table',
+  ) => void;
 }
 
 const Palette: React.FC<PaletteProps> = ({ onAdd }) => {

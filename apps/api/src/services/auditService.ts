@@ -87,23 +87,39 @@ export class AuditService {
       hash = crypto.createHash('sha256').update(canonical).digest('hex');
     }
 
-    const res = await query(
-      `INSERT INTO audit_logs (tenant_id, user_id, action, resource_type, resource_id, details, ip_address, user_agent, prev_hash, hash, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-       RETURNING id, tenant_id, user_id, action, resource_type, resource_id, details, ip_address, user_agent, prev_hash, hash, created_at`,
-      [
-        input.tenantId,
-        input.userId || null,
-        input.action,
-        input.resourceType,
-        input.resourceId || null,
-        input.details ? JSON.stringify(redactDetails(input.details)) : null,
-        input.ipAddress || null,
-        input.userAgent || null,
-        prevHash,
-        hash,
-      ]
-    );
+    const res = this.isChainEnabled()
+      ? await query(
+        `INSERT INTO audit_logs (tenant_id, user_id, action, resource_type, resource_id, details, ip_address, user_agent, prev_hash, hash, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+         RETURNING id, tenant_id, user_id, action, resource_type, resource_id, details, ip_address, user_agent, prev_hash, hash, created_at`,
+        [
+          input.tenantId,
+          input.userId || null,
+          input.action,
+          input.resourceType,
+          input.resourceId || null,
+          input.details ? JSON.stringify(redactDetails(input.details)) : null,
+          input.ipAddress || null,
+          input.userAgent || null,
+          prevHash,
+          hash,
+        ]
+      )
+      : await query(
+        `INSERT INTO audit_logs (tenant_id, user_id, action, resource_type, resource_id, details, ip_address, user_agent, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+         RETURNING id, tenant_id, user_id, action, resource_type, resource_id, details, ip_address, user_agent, created_at`,
+        [
+          input.tenantId,
+          input.userId || null,
+          input.action,
+          input.resourceType,
+          input.resourceId || null,
+          input.details ? JSON.stringify(redactDetails(input.details)) : null,
+          input.ipAddress || null,
+          input.userAgent || null,
+        ]
+      );
     return this.hydrate(res.rows[0]);
   }
 

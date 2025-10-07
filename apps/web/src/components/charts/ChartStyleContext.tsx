@@ -3,6 +3,7 @@ import React from 'react';
 export interface ChartStyle {
   themeName: 'light' | 'dark' | 'high-contrast';
   palette: string[];
+  colors?: string[];
   ariaLabel?: string;
   grid?: boolean;
 }

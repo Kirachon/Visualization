@@ -29,6 +29,17 @@ export class VersionController {
       res.json(version);
     } catch (err) { next(err); }
   }
+
+  async restore(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const tenantId = (req as any).user?.tenantId || (req.body?.tenantId as string);
+      const actorUserId = req.user!.userId;
+      const result = await versionService.restore(id, tenantId, actorUserId);
+      if (!result) { res.status(404).json({ error: 'Version not found' }); return; }
+      res.status(200).json(result);
+    } catch (err) { next(err); }
+  }
 }
 
 export const versionController = new VersionController();

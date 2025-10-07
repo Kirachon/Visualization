@@ -62,7 +62,8 @@ export const deleteDataSource = async (req: Request, res: Response, next: NextFu
 
 export const testDataSource = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { ok, error } = await dataSourceService.testConnection(req.body.connectionConfig || {});
+    const type = req.body.type || 'postgresql'; // Default to postgresql for backward compatibility
+    const { ok, error } = await dataSourceService.testConnection(type, req.body.connectionConfig || {});
     if (!ok) { res.status(400).json({ ok, error }); return; }
     res.json({ ok: true });
     return;

@@ -37,6 +37,145 @@ services:
     networks:
       - bi-platform-network
 
+  # MySQL Database (for multi-database connectivity testing)
+  mysql:
+    image: mysql:8.0
+    container_name: bi-platform-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: test_db
+      MYSQL_USER: testuser
+      MYSQL_PASSWORD: testpassword
+    ports:
+      - '3307:3306'
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init-scripts/mysql:/docker-entrypoint-initdb.d
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-prootpassword']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bi-platform-network
+
+  # SQL Server Database
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    container_name: bi-platform-sqlserver
+    environment:
+      ACCEPT_EULA: Y
+      SA_PASSWORD: YourStrong!Passw0rd
+      MSSQL_PID: Developer
+    ports:
+      - '1433:1433'
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+      - ./init-scripts/sqlserver:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'YourStrong!Passw0rd' -Q 'SELECT 1' || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - bi-platform-network
+
+  # MongoDB Database
+  mongodb:
+    image: mongo:6.0
+    container_name: bi-platform-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: adminpassword
+      MONGO_INITDB_DATABASE: test_db
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongodb_data:/data/db
+      - ./init-scripts/mongodb:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bi-platform-network
+
+  # Cassandra Database
+  cassandra:
+    image: cassandra:4.1
+    container_name: bi-platform-cassandra
+    environment:
+      CASSANDRA_CLUSTER_NAME: bi-platform-cluster
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_RACK: rack1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+    ports:
+      - '9042:9042'
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+      - ./init-scripts/cassandra:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ['CMD-SHELL', 'cqlsh -e "describe cluster"']
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - bi-platform-network
+
+  # ClickHouse Database
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: bi-platform-clickhouse
+    environment:
+      CLICKHOUSE_DB: test_db
+      CLICKHOUSE_USER: testuser
+      CLICKHOUSE_PASSWORD: testpassword
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - '8123:8123'  # HTTP interface
+      - '9000:9000'  # Native client
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./init-scripts/clickhouse:/docker-entrypoint-initdb.d
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'localhost:8123/ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bi-platform-network
+
+  # Oracle Database XE
+  oracle:
+    image: gvenzl/oracle-xe:21-slim
+    container_name: bi-platform-oracle
+    environment:
+      ORACLE_PASSWORD: OraclePassword123
+      ORACLE_DATABASE: TESTDB
+      APP_USER: testuser
+      APP_USER_PASSWORD: testpassword
+    ports:
+      - '1521:1521'
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+      - ./init-scripts/oracle:/container-entrypoint-initdb.d
+    healthcheck:
+      test: ['CMD-SHELL', 'healthcheck.sh']
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    networks:
+      - bi-platform-network
+
   # Keycloak Authentication
   keycloak:
     image: quay.io/keycloak/keycloak:22.0.5
@@ -175,6 +314,12 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  mysql_data:
+  sqlserver_data:
+  mongodb_data:
+  cassandra_data:
+  clickhouse_data:
+  oracle_data:
   kong_data:
 
 networks:

@@ -122,6 +122,27 @@ CREATE TABLE IF NOT EXISTS dashboard_shares (
     UNIQUE(dashboard_id, user_id)
 );
 
+-- Create import_jobs table for tracking file import operations
+CREATE TABLE IF NOT EXISTS import_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    data_source_id UUID REFERENCES data_sources(id) ON DELETE SET NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_size BIGINT,
+    file_type VARCHAR(50) NOT NULL,
+    table_name VARCHAR(255) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+    progress JSONB DEFAULT '{"totalRows": 0, "processedRows": 0, "successfulRows": 0, "failedRows": 0, "percentage": 0}'::jsonb,
+    error_count INTEGER DEFAULT 0,
+    errors JSONB DEFAULT '[]'::jsonb,
+    options JSONB DEFAULT '{}'::jsonb,
+    started_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- Create public_dashboard_links table
 CREATE TABLE IF NOT EXISTS public_dashboard_links (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -177,6 +198,11 @@ CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_dashboard_shares_dashboard_id ON dashboard_shares(dashboard_id);
 CREATE INDEX IF NOT EXISTS idx_dashboard_shares_user_id ON dashboard_shares(user_id);
+CREATE INDEX IF NOT EXISTS idx_import_jobs_tenant_id ON import_jobs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_import_jobs_data_source_id ON import_jobs(data_source_id);
+CREATE INDEX IF NOT EXISTS idx_import_jobs_status ON import_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_import_jobs_created_by ON import_jobs(created_by);
+CREATE INDEX IF NOT EXISTS idx_import_jobs_created_at ON import_jobs(created_at);
 CREATE INDEX IF NOT EXISTS idx_public_links_token ON public_dashboard_links(token);
 CREATE INDEX IF NOT EXISTS idx_public_links_dashboard_id ON public_dashboard_links(dashboard_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_id ON audit_logs(tenant_id);
@@ -209,5 +235,52 @@ CREATE TRIGGER update_dashboards_updated_at BEFORE UPDATE ON dashboards
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_data_sources_updated_at BEFORE UPDATE ON data_sources
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_import_jobs_updated_at BEFORE UPDATE ON import_jobs
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Create filter_sets table for saved filter configurations
+CREATE TABLE IF NOT EXISTS filter_sets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    dashboard_id UUID REFERENCES dashboards(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    predicates JSONB NOT NULL DEFAULT '[]'::jsonb,
+    is_global BOOLEAN DEFAULT false,
+    created_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create filter_metrics table for performance monitoring
+CREATE TABLE IF NOT EXISTS filter_metrics (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    dashboard_id UUID REFERENCES dashboards(id) ON DELETE CASCADE,
+    predicate_hash VARCHAR(64) NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    cache_hit BOOLEAN DEFAULT false,
+    row_count INTEGER,
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for filter_sets
+CREATE INDEX IF NOT EXISTS idx_filter_sets_tenant_id ON filter_sets(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_filter_sets_dashboard_id ON filter_sets(dashboard_id);
+CREATE INDEX IF NOT EXISTS idx_filter_sets_created_by ON filter_sets(created_by);
+CREATE INDEX IF NOT EXISTS idx_filter_sets_created_at ON filter_sets(created_at);
+
+-- Create indexes for filter_metrics
+CREATE INDEX IF NOT EXISTS idx_filter_metrics_tenant_id ON filter_metrics(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_filter_metrics_dashboard_id ON filter_metrics(dashboard_id);
+CREATE INDEX IF NOT EXISTS idx_filter_metrics_predicate_hash ON filter_metrics(predicate_hash);
+CREATE INDEX IF NOT EXISTS idx_filter_metrics_created_at ON filter_metrics(created_at);
+CREATE INDEX IF NOT EXISTS idx_filter_metrics_cache_hit ON filter_metrics(cache_hit);
+
+-- Create trigger for updated_at on filter_sets
+CREATE TRIGGER update_filter_sets_updated_at BEFORE UPDATE ON filter_sets
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

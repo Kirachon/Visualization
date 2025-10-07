@@ -66,7 +66,8 @@ export const authorize = (resource: string, action: string) => {
       const hasPermission = await authService.authorize(
         req.user.userId,
         resource,
-        action
+        action,
+        req.user.tenantId
       );
 
       if (!hasPermission) {

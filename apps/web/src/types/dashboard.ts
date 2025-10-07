@@ -1,4 +1,4 @@
-export type DashboardComponentType = 'bar' | 'line' | 'pie' | 'table';
+export type DashboardComponentType = 'bar' | 'line' | 'pie' | 'table' | 'area' | 'donut' | 'scatter' | 'stackedBar' | 'histogram';
 
 export interface DashboardMeta {
   id: string;

@@ -13,9 +13,21 @@ export const getSlowQueries = async (req: Request, res: Response, next: NextFunc
 
 export const getCacheStats = async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    res.json(perfService.cacheStats());
+    const stats = await perfService.cacheStats();
+    res.json(stats);
   } catch (err) {
     next(err);
   }
 };
+
+export const getEngineSplit = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const since = parseInt((req.query.since as string) || '3600000', 10); // default 1h
+    const split = perfService.engineSplitSince(since);
+    res.json(split);
+  } catch (err) {
+    next(err);
+  }
+};
+
 

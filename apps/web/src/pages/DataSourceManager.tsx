@@ -16,7 +16,7 @@ import {
   DialogContent,
   DialogActions,
 } from '@mui/material';
-import { Add, Edit, Delete, CheckCircle, Error, Warning } from '@mui/icons-material';
+import { Add, Edit, Delete, CheckCircle, Error, Warning, Upload } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch, RootState } from '../stores/store';
 import {
@@ -26,6 +26,7 @@ import {
   deleteDataSource,
 } from '../stores/dataSourceSlice';
 import DataSourceForm from '../components/forms/DataSourceForm';
+import { FileImportWizard } from '../components/forms/FileImportWizard';
 import type { DataSource, CreateDataSourceRequest } from '../services/dataSourceService';
 
 export const DataSourceManager: React.FC = () => {
@@ -37,6 +38,8 @@ export const DataSourceManager: React.FC = () => {
   const [selectedDataSource, setSelectedDataSource] = useState<DataSource | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [dataSourceToDelete, setDataSourceToDelete] = useState<DataSource | null>(null);
+  const [importWizardOpen, setImportWizardOpen] = useState(false);
+  const [dataSourceForImport, setDataSourceForImport] = useState<DataSource | null>(null);
 
   useEffect(() => {
     dispatch(fetchDataSources());
@@ -57,6 +60,11 @@ export const DataSourceManager: React.FC = () => {
   const handleDelete = (dataSource: DataSource) => {
     setDataSourceToDelete(dataSource);
     setDeleteDialogOpen(true);
+  };
+
+  const handleImport = (dataSource: DataSource) => {
+    setDataSourceForImport(dataSource);
+    setImportWizardOpen(true);
   };
 
   const confirmDelete = async () => {
@@ -158,10 +166,13 @@ export const DataSourceManager: React.FC = () => {
                 </Typography>
               </CardContent>
               <CardActions>
-                <IconButton size="small" onClick={() => handleEdit(dataSource)}>
+                <IconButton size="small" onClick={() => handleEdit(dataSource)} title="Edit">
                   <Edit />
                 </IconButton>
-                <IconButton size="small" color="error" onClick={() => handleDelete(dataSource)}>
+                <IconButton size="small" onClick={() => handleImport(dataSource)} title="Import Data">
+                  <Upload />
+                </IconButton>
+                <IconButton size="small" color="error" onClick={() => handleDelete(dataSource)} title="Delete">
                   <Delete />
                 </IconButton>
               </CardActions>
@@ -207,6 +218,17 @@ export const DataSourceManager: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {dataSourceForImport && (
+        <FileImportWizard
+          open={importWizardOpen}
+          onClose={() => {
+            setImportWizardOpen(false);
+            setDataSourceForImport(null);
+          }}
+          dataSourceId={dataSourceForImport.id}
+        />
+      )}
     </Box>
   );
 };

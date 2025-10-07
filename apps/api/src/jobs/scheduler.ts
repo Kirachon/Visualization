@@ -32,6 +32,21 @@ export async function initScheduler() {
       }, { connection: r as any });
     }
 
+    // PRESENCE CLEANUP
+    if ((process.env.COLLAB_PRESENCE_CLEANUP || 'true').toLowerCase() === 'true') {
+      const q = new Queue('presence', { connection: r as any });
+      await q.add('cleanup', {}, { repeat: { every: parseInt(process.env.PRESENCE_CLEANUP_INTERVAL_MS || '600000', 10) }, removeOnComplete: true });
+      new Worker('presence', async () => {
+        const start = Date.now();
+        try {
+          const { presenceService } = await import('../services/presenceService.js');
+          try { await presenceService.clearStalePresences(parseInt(process.env.PRESENCE_STALE_SECONDS || '3600', 10)); } catch {}
+          jobDuration.labels('presence','cleanup','ok').observe(Date.now() - start);
+        } catch (e) { jobFailures.labels('presence','cleanup').inc(); throw e; }
+      }, { connection: r as any });
+    }
+
+
     // SEARCH CONTINUOUS INDEX
     if ((process.env.SEARCH_CONTINUOUS_INDEX || 'false').toLowerCase() === 'true') {
       const q = new Queue('search', { connection: r as any });

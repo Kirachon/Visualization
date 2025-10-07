@@ -7,7 +7,8 @@ import { loginSchema } from '../validators/authValidators.js';
 
 const router = Router();
 
-// Stricter rate limiting for login endpoint
+// Stricter rate limiting for login endpoint (disabled in test)
+const isTestEnv = (process.env.NODE_ENV || '').toLowerCase() === 'test';
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // Limit each IP to 5 login attempts per windowMs
@@ -16,7 +17,11 @@ const loginLimiter = rateLimit({
 });
 
 // Public routes
-router.post('/login', loginLimiter, validate(loginSchema), authController.login.bind(authController));
+if (!isTestEnv) {
+  router.post('/login', loginLimiter, validate(loginSchema), authController.login.bind(authController));
+} else {
+  router.post('/login', validate(loginSchema), authController.login.bind(authController));
+}
 router.post('/logout', authController.logout.bind(authController));
 router.post('/refresh', authController.refresh.bind(authController));
 
