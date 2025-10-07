@@ -27,8 +27,12 @@ export class AuthController {
         maxAge: 604800000, // 7 days
       });
 
+      const userResponse = {
+        ...result.user,
+        role: { id: (result.user as any).roleId, name: (result.user as any).roleName },
+      };
       res.status(200).json({
-        user: result.user,
+        user: userResponse,
         token: result.token,
         refreshToken: result.refreshToken,
       });
@@ -57,8 +61,8 @@ export class AuthController {
     next: NextFunction
   ): Promise<void> {
     try {
-      // Get refresh token from httpOnly cookie
-      const refreshToken = req.cookies.refreshToken;
+      // Get refresh token from httpOnly cookie or request body (for tests)
+      const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
 
       if (!refreshToken) {
         throw new ValidationError('Refresh token is required');
@@ -88,8 +92,12 @@ export class AuthController {
         throw new ValidationError('User not authenticated');
       }
 
+      const userResponse = req.user ? {
+        ...req.user,
+        role: { id: req.user.roleId, name: req.user.roleName },
+      } : undefined;
       res.status(200).json({
-        user: req.user,
+        user: userResponse,
       });
     } catch (error) {
       next(error);

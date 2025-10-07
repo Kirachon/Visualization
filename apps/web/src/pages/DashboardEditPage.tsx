@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Button, CircularProgress, Divider, Stack, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, Divider, Drawer, Stack, Typography } from '@mui/material';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { AppDispatch, RootState } from '../stores/store';
@@ -22,7 +22,21 @@ import ConfigPanel from '../components/builder/ConfigPanel';
 import ErrorBoundary from '../components/builder/ErrorBoundary';
 import ShareIndicator from '../components/builder/ShareIndicator';
 import ShareDialog from '../components/dashboard/ShareDialog';
-import { ChartContainer, BarChart, LineChart, PieChart, TableChart } from '../components/charts';
+import PresenceAvatars from '../components/realtime/PresenceAvatars';
+import CommentThread from '../components/collaboration/CommentThread';
+import ActivityFeed from '../components/collaboration/ActivityFeed';
+import {
+  ChartContainer,
+  BarChart,
+  LineChart,
+  PieChart,
+  TableChart,
+  AreaChart,
+  DonutChart,
+  ScatterChart,
+  StackedBarChart,
+  Histogram,
+} from '../components/charts';
 import dashboardService from '../services/dashboardService';
 
 function useDebouncedCallback<T extends (...args: any[]) => void>(fn: T, delay: number) {
@@ -38,6 +52,7 @@ function useDebouncedCallback<T extends (...args: any[]) => void>(fn: T, delay: 
 
 const DashboardEditPage: React.FC = () => {
   const [shareOpen, setShareOpen] = useState(false);
+  const [collabOpen, setCollabOpen] = useState(false);
 
   const { id } = useParams();
   const dispatch = useDispatch<AppDispatch>();
@@ -113,6 +128,10 @@ const DashboardEditPage: React.FC = () => {
               {dashboard.meta.name}
             </Typography>
             <ShareIndicator dashboardId={dashboard.id} initialShared={dashboard.meta.isShared} />
+                <PresenceAvatars dashboardId={dashboard.id} />
+                <Button variant="outlined" size="small" onClick={() => setCollabOpen(true)} aria-label="Open Collaboration Panel">
+                  Collaboration
+                </Button>
             {canEdit && (
               <Button variant="outlined" size="small" onClick={() => setShareOpen(true)} aria-label="Open Share Dialog">
                 Share
@@ -168,8 +187,18 @@ const DashboardEditPage: React.FC = () => {
                         return <BarChart data={data} title={title} />;
                       case 'line':
                         return <LineChart data={data} title={title} />;
+                      case 'area':
+                        return <AreaChart data={data} title={title} />;
                       case 'pie':
                         return <PieChart data={data} title={title} />;
+                      case 'donut':
+                        return <DonutChart data={data} title={title} />;
+                      case 'scatter':
+                        return <ScatterChart data={data} title={title} />;
+                      case 'stackedBar':
+                        return <StackedBarChart data={data} title={title} />;
+                      case 'histogram':
+                        return <Histogram data={data} title={title} />;
                       case 'table':
                         return <TableChart data={data} title={title} />;
                       default:
@@ -187,6 +216,15 @@ const DashboardEditPage: React.FC = () => {
       {canEdit && (
         <ShareDialog dashboardId={dashboard.id} open={shareOpen} onClose={() => setShareOpen(false)} />
       )}
+
+      {/* Collaboration Drawer */}
+      <Drawer anchor="right" open={collabOpen} onClose={() => setCollabOpen(false)}>
+        <Stack direction="column" spacing={2} sx={{ p: 2, width: 400 }}>
+          <CommentThread dashboardId={dashboard.id} />
+          <Divider />
+          <ActivityFeed dashboardId={dashboard.id} />
+        </Stack>
+      </Drawer>
 
       </Stack>
     </ErrorBoundary>

@@ -11,6 +11,7 @@ import DashboardEditPage from './pages/DashboardEditPage';
 import UserManager from './pages/UserManager';
 import UserProfile from './pages/UserProfile';
 import PasswordReset from './pages/PasswordReset';
+import PerformanceDashboard from './pages/PerformanceDashboard';
 
 
 const Dashboard: React.FC = () => (
@@ -84,6 +85,16 @@ const App: React.FC = () => {
           <ProtectedRoute requiredRole="Admin">
             <MainLayout>
               <UserManager />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/performance"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <PerformanceDashboard />
             </MainLayout>
           </ProtectedRoute>
         }

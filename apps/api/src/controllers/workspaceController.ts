@@ -47,6 +47,50 @@ export class WorkspaceController {
       res.status(204).send();
     } catch (err) { next(err); }
   }
+
+  // Members
+  async listMembers(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { workspaceMemberService } = await import('../services/workspaceMemberService.js');
+      const members = await workspaceMemberService.listMembers(id);
+      res.json(members);
+    } catch (err) { next(err); }
+  }
+
+  async addMember(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { userId, role } = req.body;
+      if (!userId || !role) { res.status(400).json({ error: 'userId and role required' }); return; }
+      const { workspaceMemberService } = await import('../services/workspaceMemberService.js');
+      const actor = req.user!.userId;
+      const m = await workspaceMemberService.addMember({ workspaceId: id, userId, role, addedBy: actor });
+      res.status(201).json(m);
+    } catch (err) { next(err); }
+  }
+
+  async updateMember(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id, userId } = req.params;
+      const { role } = req.body;
+      if (!role) { res.status(400).json({ error: 'role required' }); return; }
+      const { workspaceMemberService } = await import('../services/workspaceMemberService.js');
+      const m = await workspaceMemberService.updateRole(id, userId, role);
+      if (!m) { res.status(404).json({ error: 'Member not found' }); return; }
+      res.json(m);
+    } catch (err) { next(err); }
+  }
+
+  async removeMember(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id, userId } = req.params;
+      const { workspaceMemberService } = await import('../services/workspaceMemberService.js');
+      const ok = await workspaceMemberService.removeMember(id, userId);
+      if (!ok) { res.status(404).json({ error: 'Member not found' }); return; }
+      res.status(204).send();
+    } catch (err) { next(err); }
+  }
 }
 
 export const workspaceController = new WorkspaceController();

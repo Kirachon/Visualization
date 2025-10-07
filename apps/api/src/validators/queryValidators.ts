@@ -15,5 +15,6 @@ export const executeQuerySchema = Joi.object({
   limit: Joi.number().integer().min(1).max(1000).optional(),
   offset: Joi.number().integer().min(0).optional(),
   timeoutMs: Joi.number().integer().min(1000).max(120000).optional(),
+  useOlap: Joi.boolean().optional(),
 });
 

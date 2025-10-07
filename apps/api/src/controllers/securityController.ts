@@ -84,9 +84,11 @@ export class SecurityController {
       const tenantId = (req as any).user?.tenantId || (req.query.tenantId as string);
       const result = await auditService.verifyChain(tenantId, 5000);
       const payload = { tenantId, generatedAt: new Date().toISOString(), result };
-      const { signAuditPayload } = await import('../utils/signing.js');
+      const { signAuditPayload, canonicalJson } = await import('../utils/signing.js');
       const { keyId, signature } = signAuditPayload(payload);
-      res.json({ keyId, signature, payload });
+      const includeCanonical = (process.env.AUDIT_EXPORT_INCLUDE_CANONICAL || 'false').toLowerCase() === 'true';
+      const canonical = includeCanonical ? canonicalJson(payload) : undefined;
+      res.json({ keyId, signature, payload, ...(includeCanonical ? { canonical } : {}) });
     } catch (err) { next(err); }
   }
 }

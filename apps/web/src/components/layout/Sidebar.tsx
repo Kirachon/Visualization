@@ -4,6 +4,7 @@ import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, Toolbar } fro
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import StorageIcon from '@mui/icons-material/Storage';
 import PeopleIcon from '@mui/icons-material/People';
+import SpeedIcon from '@mui/icons-material/Speed';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const drawerWidth = 240;
@@ -20,6 +21,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
   const items = [
     { label: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
     { label: 'Data Sources', icon: <StorageIcon />, path: '/data-sources' },
+    { label: 'Performance', icon: <SpeedIcon />, path: '/performance' },
     { label: 'Users', icon: <PeopleIcon />, path: '/users' },
   ];
 

@@ -62,10 +62,31 @@ export const DataSourceForm: React.FC<DataSourceFormProps> = ({
         },
       });
     } else {
-      setFormData({
-        ...formData,
-        [field]: value,
-      });
+      // Update default port when type changes
+      if (field === 'type') {
+        const defaultPorts: Record<string, number> = {
+          postgresql: 5432,
+          mysql: 3306,
+          mssql: 1433,
+          oracle: 1521,
+          mongodb: 27017,
+          cassandra: 9042,
+          clickhouse: 8123,
+        };
+        setFormData({
+          ...formData,
+          [field]: value,
+          connectionConfig: {
+            ...formData.connectionConfig,
+            port: defaultPorts[value] || formData.connectionConfig.port,
+          },
+        });
+      } else {
+        setFormData({
+          ...formData,
+          [field]: value,
+        });
+      }
     }
   };
 
@@ -73,7 +94,7 @@ export const DataSourceForm: React.FC<DataSourceFormProps> = ({
     setTesting(true);
     setTestResult(null);
     try {
-      const result = await dataSourceService.testConnection(formData.connectionConfig);
+      const result = await dataSourceService.testConnection(formData.type, formData.connectionConfig);
       setTestResult({
         success: result.ok,
         message: result.ok ? 'Connection successful!' : result.message || 'Connection failed',
@@ -122,7 +143,7 @@ export const DataSourceForm: React.FC<DataSourceFormProps> = ({
               onChange={(e) => handleChange('type', e.target.value)}
             >
               <MenuItem value="postgresql">PostgreSQL</MenuItem>
-              <MenuItem value="mysql" disabled>MySQL (coming soon)</MenuItem>
+              <MenuItem value="mysql">MySQL</MenuItem>
               <MenuItem value="mssql" disabled>SQL Server (coming soon)</MenuItem>
               <MenuItem value="oracle" disabled>Oracle (coming soon)</MenuItem>
               <MenuItem value="mongodb" disabled>MongoDB (coming soon)</MenuItem>

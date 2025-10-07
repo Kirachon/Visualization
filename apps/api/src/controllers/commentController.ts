@@ -7,7 +7,8 @@ export class CommentController {
       const { dashboardId, body, mentions } = req.body;
       if (!dashboardId || !body) { res.status(400).json({ error: 'dashboardId and body required' }); return; }
       const userId = req.user!.userId;
-      const comment = await commentService.create({ dashboardId, userId, body, mentions });
+      const tenantId = (req as any).user?.tenantId || (req.body?.tenantId as string);
+      const comment = await commentService.create({ tenantId, dashboardId, userId, body, mentions });
       res.status(201).json(comment);
     } catch (err) { next(err); }
   }

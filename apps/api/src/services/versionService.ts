@@ -46,6 +46,52 @@ export class VersionService {
     return this.hydrate(res.rows[0]);
   }
 
+  async restore(versionId: string, tenantId: string, actorUserId: string): Promise<{ dashboardId: string; applied: any } | null> {
+    // Fetch version and associated diff
+    const vRes = await query(`SELECT * FROM dashboard_versions WHERE id = $1`, [versionId]);
+    if (vRes.rows.length === 0) return null;
+    const v = this.hydrate(vRes.rows[0]);
+
+    // Derive fields to apply; support either { snapshot: { ...fields } } or diff with top-level fields
+    const src: any = (v.diff && (v.diff.snapshot || v.diff)) || {};
+    const fields = {
+      name: src.name ?? null,
+      description: src.description ?? null,
+      layout: src.layout ?? null,
+      components: src.components ?? null,
+    };
+
+    // Apply to dashboard when provided
+    const sets: string[] = [];
+    const params: any[] = [];
+    let idx = 1;
+    if (fields.name !== null) { sets.push(`name = $${idx++}`); params.push(fields.name); }
+    if (fields.description !== null) { sets.push(`description = $${idx++}`); params.push(fields.description); }
+    if (fields.layout !== null) { sets.push(`layout = $${idx++}`); params.push(JSON.stringify(fields.layout)); }
+    if (fields.components !== null) { sets.push(`components = $${idx++}`); params.push(JSON.stringify(fields.components)); }
+
+    if (sets.length === 0) {
+      // Nothing to apply; treat as no-op restore
+      return { dashboardId: v.dashboardId, applied: {} };
+    }
+
+    // WHERE clause
+    params.push(v.dashboardId); const dashIdx = idx++;
+    params.push(tenantId); const tenantIdx = idx++;
+
+    const sql = `UPDATE dashboards SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${dashIdx} AND tenant_id = $${tenantIdx} RETURNING id`;
+    await query(sql, params);
+
+    // Optionally record activity (best-effort)
+    try {
+      const { activityService } = await import('./activityService.js');
+      await activityService.create({ dashboardId: v.dashboardId, type: 'dashboard.restored', actorId: actorUserId, details: { versionId } });
+    } catch {}
+
+    return { dashboardId: v.dashboardId, applied: fields };
+  }
+
+
   hydrate(row: any): DashboardVersion {
     return {
       id: row.id,

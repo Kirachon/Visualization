@@ -1,4 +1,13 @@
-export type ChartType = 'bar' | 'line' | 'pie';
+export type ChartType =
+  | 'bar'
+  | 'line'
+  | 'pie'
+  | 'area'
+  | 'donut'
+  | 'scatter'
+  | 'stackedBar'
+  | 'histogram'
+  | 'table';
 
 export interface SeriesPoint {
   x: number | string | Date;

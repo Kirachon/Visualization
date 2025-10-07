@@ -1,18 +1,14 @@
 import { query } from '../database/connection.js';
 import type { CreateDataSourceInput, DataSource, UpdateDataSourceInput } from '../models/DataSource.js';
 import { encrypt, decrypt, type CipherText } from '../utils/encryption.js';
-import { Pool } from 'pg';
+import { ConnectorFactory } from '../connectors/ConnectorFactory.js';
+import type { ConnectionConfig } from '../connectors/IConnector.js';
 
 function nowIso(): string { return new Date().toISOString(); }
 
 function encCreds(password: string): CipherText { return encrypt(password); }
 function decCreds(cipher: CipherText): string { return decrypt(cipher); }
 
-function buildPgConnStr(cfg: any, password?: string): string {
-  const pass = password ?? cfg.password;
-  const ssl = cfg.ssl ? '?sslmode=require' : '';
-  return `postgresql://${encodeURIComponent(cfg.username)}:${encodeURIComponent(pass)}@${cfg.host}:${cfg.port}/${cfg.database}${ssl}`;
-}
 
 export class DataSourceService {
   async create(tenantId: string, ownerId: string, input: CreateDataSourceInput): Promise<DataSource> {
@@ -74,50 +70,76 @@ export class DataSourceService {
     return (res.rowCount ?? 0) > 0;
   }
 
-  async testConnection(cfg: any): Promise<{ ok: boolean; error?: string }>{
+  async testConnection(type: string, cfg: any): Promise<{ ok: boolean; error?: string }>{
     try {
-      const connStr = buildPgConnStr(cfg);
-      const pool = new Pool({ connectionString: connStr, max: 1, connectionTimeoutMillis: 2000 });
-      const client = await pool.connect();
-      await client.query('SELECT 1');
-      client.release();
-      await pool.end();
-      return { ok: true };
+      // Use connector factory for multi-database support
+      const connector = ConnectorFactory.getConnector(type);
+      const config: ConnectionConfig = {
+        host: cfg.host,
+        port: cfg.port,
+        database: cfg.database,
+        username: cfg.username,
+        password: cfg.password,
+        ssl: cfg.ssl,
+      };
+      const result = await connector.test(config);
+      return { ok: result.success, error: result.error };
     } catch (e: any) {
       return { ok: false, error: e.message };
     }
   }
 
   async discoverSchema(ds: DataSource): Promise<any[]> {
-    // Decrypt password if needed
-    const rawCfg = ds.connectionConfig as any;
-    const password = typeof rawCfg.password === 'object' ? decCreds(rawCfg.password as CipherText) : rawCfg.password;
-    const connStr = buildPgConnStr(rawCfg, password);
-    const pool = new Pool({ connectionString: connStr, max: 1, connectionTimeoutMillis: 5000 });
-    const client = await pool.connect();
     try {
-      const q = `SELECT table_schema, table_name, column_name, data_type, is_nullable, column_default
-                 FROM information_schema.columns
-                 WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-                 ORDER BY table_schema, table_name, ordinal_position`;
-      const res = await client.query(q);
+      // Decrypt password if needed
+      const rawCfg = ds.connectionConfig as any;
+      const password = typeof rawCfg.password === 'object' ? decCreds(rawCfg.password as CipherText) : rawCfg.password;
+
+      // Use connector factory for multi-database support
+      const connector = ConnectorFactory.getConnector(ds.type);
+      const config: ConnectionConfig = {
+        host: rawCfg.host,
+        port: rawCfg.port,
+        database: rawCfg.database,
+        username: rawCfg.username,
+        password: password,
+        ssl: rawCfg.ssl,
+      };
+
+      const schemaInfo = await connector.introspect(config);
+
+      // Flatten schema info for persistence
+      const rows: any[] = [];
+      for (const schema of schemaInfo.schemas) {
+        for (const table of schema.tables) {
+          for (const column of table.columns) {
+            rows.push({
+              schema_name: schema.schemaName,
+              table_name: table.tableName,
+              column_name: column.columnName,
+              data_type: column.dataType,
+              is_nullable: column.isNullable,
+              column_default: column.defaultValue,
+            });
+          }
+        }
+      }
 
       // Persist snapshot
       await query('DELETE FROM data_source_schemas WHERE data_source_id = $1', [ds.id]);
-      const inserts = res.rows.map((r) =>
+      const inserts = rows.map((r) =>
         query(
           `INSERT INTO data_source_schemas (data_source_id, schema_name, table_name, column_name, data_type, is_nullable, column_default)
            VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
-          [ds.id, r.table_schema, r.table_name, r.column_name, r.data_type, r.is_nullable === 'YES', r.column_default]
+          [ds.id, r.schema_name, r.table_name, r.column_name, r.data_type, r.is_nullable, r.column_default]
         )
       );
       await Promise.all(inserts);
-      await query('UPDATE data_sources SET schema_info = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify({ at: nowIso(), columns: res.rowCount }), ds.id]);
+      await query('UPDATE data_sources SET schema_info = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify({ at: nowIso(), columns: rows.length }), ds.id]);
 
-      return res.rows;
-    } finally {
-      client.release();
-      await pool.end();
+      return rows;
+    } catch (error: any) {
+      throw new Error(`Failed to discover schema: ${error.message}`);
     }
   }
 

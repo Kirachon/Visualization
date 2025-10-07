@@ -88,9 +88,11 @@ class DataSourceService {
   }
 
   async testConnection(
+    type: string,
     config: DataSourceConnectionConfig,
   ): Promise<{ ok: boolean; message?: string }> {
     const response = await apiClient.post<{ ok: boolean; message?: string }>('/data-sources/test', {
+      type,
       connectionConfig: config,
     });
     return response.data;
